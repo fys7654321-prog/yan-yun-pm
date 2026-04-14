@@ -15,13 +15,12 @@ exports.handler = async (event, context) => {
     const { task, owner } = JSON.parse(event.body);
     
     const prompt = `任务：${task}
-责任人：${owner}
+负责人：${owner}
 
-请把这个任务拆解成3-5个具体的子步骤，每个步骤用简短的话说明要做什么。格式要求：
-- 每个子步骤一行
-- 前面加序号
-- 总字数不超过80字
-- 直接输出，不要加标题`;
+请拆解为3-5个简单子步骤，每步一行，总字数<80字。`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
     const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/responses', {
       method: 'POST',
@@ -38,17 +37,26 @@ exports.handler = async (event, context) => {
             text: prompt
           }]
         }]
-      })
+      }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(`API错误: ${response.status}`);
+    }
 
     const data = await response.json();
     
     let result = '';
     if (data.output && data.output[0] && data.output[0].content) {
       const text = data.output[0].content.find(c => c.type === 'output_text');
-      result = text ? text.text : '';
+      result = text ? text.text : JSON.stringify(data);
     } else if (data.output && data.output.text) {
       result = data.output.text;
+    } else {
+      result = JSON.stringify(data);
     }
 
     return {
@@ -61,8 +69,12 @@ exports.handler = async (event, context) => {
     };
   } catch (error) {
     return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message })
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ result: '⚠️ AI暂时不可用，请稍后重试或手动拆解任务。' })
     };
   }
 };
