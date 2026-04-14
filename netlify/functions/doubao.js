@@ -12,24 +12,16 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const { tasks } = JSON.parse(event.body);
+    const { task, owner } = JSON.parse(event.body);
     
-    // 构建进度数据上下文
-    const total = tasks.length;
-    const done = tasks.filter(t => t.status === 'done').length;
-    const progress = tasks.filter(t => t.status === 'progress').length;
-    const todo = tasks.filter(t => t.status === 'todo').length;
-    
-    const context = `📊 项目进度数据
-    
-当前完成度：${Math.round(done/total*100)}% (${done}/${total})
-进行中：${progress}项 | 待办：${todo}项
+    const prompt = `任务：${task}
+责任人：${owner}
 
-待办任务详情：
-${tasks.filter(t => t.status !== 'done').map(t => `- ${t.name} [${t.owner}] ${t.date ? '📅 ' + t.date : ''}`).join('\n')}
-
-已完成任务：
-${tasks.filter(t => t.status === 'done').map(t => `- ${t.name} [${t.owner}]`).join('\n')}`;
+请把这个任务拆解成3-5个具体的子步骤，每个步骤用简短的话说明要做什么。格式要求：
+- 每个子步骤一行
+- 前面加序号
+- 总字数不超过80字
+- 直接输出，不要加标题`;
 
     const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/responses', {
       method: 'POST',
@@ -43,11 +35,7 @@ ${tasks.filter(t => t.status === 'done').map(t => `- ${t.name} [${t.owner}]`).jo
           role: 'user',
           content: [{
             type: 'input_text',
-            text: `请基于以下项目进度数据，识别潜在风险点并给出简短总结（不超过150字）：
-
-${context}
-
-请直接输出风险分析，不要加标题。`
+            text: prompt
           }]
         }]
       })

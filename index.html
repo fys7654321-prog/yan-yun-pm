@@ -971,6 +971,13 @@ tbody tr:hover { background: rgba(255,255,255,0.02); }
           <option value="done">完成</option>
         </select>
       </div>
+      <div class="form-group">
+        <label>AI任务拆解</label>
+        <button class="btn" onclick="splitTask()" id="splitBtn" style="width:100%;">
+          🤖 帮我拆解这个任务
+        </button>
+        <div id="splitResult" style="margin-top:10px;font-size:12px;color:var(--fg-muted);line-height:1.8;"></div>
+      </div>
       <div class="form-actions">
         <button class="btn btn-danger" onclick="deleteCurrentTask()">删除</button>
         <div style="flex:1;"></div>
@@ -1039,21 +1046,6 @@ tbody tr:hover { background: rgba(255,255,255,0.02); }
     </table>
   </div>
 
-  <!-- AI风险识别 -->
-  <div class="ai-risk-panel">
-    <div class="ai-risk-header">
-      <div class="ai-risk-icon">🤖</div>
-      <div>
-        <div class="ai-risk-title">AI风险识别助手</div>
-        <div class="ai-risk-desc">基于进度管理表数据，自动识别潜在风险点</div>
-      </div>
-    </div>
-    <button class="ai-btn" onclick="analyzeProgressRisk()" id="riskBtn">
-      📊 生成本地报告
-    </button>
-    <div class="ai-output" id="aiOutput" style="display:none;"></div>
-    <div id="localRiskReport"></div>
-  </div>
 </section>
 
 </div>
@@ -1294,6 +1286,59 @@ function addTask() {
   openEdit(tasks[tasks.length - 1].id);
 }
 
+// ========== AI任务拆解 ==========
+async function splitTask() {
+  if (!editingId) return;
+  const task = tasks.find(t => t.id === editingId);
+  if (!task) return;
+  
+  const btn = document.getElementById('splitBtn');
+  const result = document.getElementById('splitResult');
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ AI拆解中...';
+  result.textContent = '';
+  
+  try {
+    const response = await fetch('/.netlify/functions/doubao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: task.name, owner: task.owner })
+    });
+    
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    
+    result.innerHTML = data.result.replace(/\n/g, '<br>');
+  } catch(err) {
+    // API失败时显示本地预设拆解
+    result.innerHTML = getLocalSplit(task.name);
+  }
+  
+  btn.disabled = false;
+  btn.textContent = '🤖 帮我拆解这个任务';
+}
+
+function getLocalSplit(taskName) {
+  const splits = {
+    'CG/PV制作': '<b>拆解建议：</b><br>① 确认风格方向（2天）<br>② 初版制作（5天）<br>③ 修改确认（3天）<br>④ 最终交付',
+    '直播方案框架确认': '<b>拆解建议：</b><br>① 明确直播目标<br>② 确认直播形式<br>③ 拆解部门分工<br>④ 输出执行框架',
+    '供应商招标': '<b>拆解建议：</b><br>① 整理需求文档<br>② 筛选3家供应商<br>③ 招标比价<br>④ 合同签订',
+    '脚本制作': '<b>拆解建议：</b><br>① 确认内容大纲<br>② 撰写分镜脚本<br>③ 内部评审<br>④ 定稿交付',
+    '剪辑': '<b>拆解建议：</b><br>① 素材整理分类<br>② 初剪（粗版）<br>③ 修改反馈<br>④ 精剪+字幕<br>⑤ 最终交付',
+    '直播预告发布': '<b>拆解建议：</b><br>① 制作预告素材<br>② 撰写文案<br>③ 多平台分发<br>④ 数据复盘',
+    '研发素材': '<b>拆解建议：</b><br>① 录屏包准备<br>② CG素材整理<br>③ 质量审核<br>④ 交付归档',
+    '搭建拍摄': '<b>拆解建议：</b><br>① 场地确认<br>② 道具准备<br>③ 搭建布置<br>④ 拍摄执行',
+    '嘉宾档期': '<b>拆解建议：</b><br>① 候选名单<br>② 档期沟通<br>③ 内容对齐<br>④ 合同确认'
+  };
+  
+  for (const [key, val] of Object.entries(splits)) {
+    if (taskName.includes(key)) return val;
+  }
+  
+  return '<b>拆解建议：</b><br>① 明确目标<br>② 拆解步骤<br>③ 分配资源<br>④ 设置check point';
+}
+
 // ========== 导出/导入 ==========
 function exportData() {
   const blob = new Blob([JSON.stringify({ tasks, nextId }, null, 2)], { type: 'application/json' });
@@ -1327,59 +1372,6 @@ function handleImport(e) {
     }
   };
   reader.readAsText(file);
-}
-
-// ========== AI风险识别（调用豆包API） ==========
-async function analyzeProgressRisk() {
-  const btn = document.getElementById('riskBtn');
-  const output = document.getElementById('aiOutput');
-
-  btn.disabled = true;
-  output.classList.add('loading');
-  output.textContent = '正在分析进度数据...';
-
-  try {
-    const result = await callDoubaoAPI();
-    output.textContent = result;
-    output.classList.remove('loading');
-  } catch(err) {
-    output.classList.remove('loading');
-    output.textContent = '分析失败：' + err.message + '\n\n' + generateLocalRiskAnalysis();
-  }
-
-  btn.disabled = false;
-}
-
-async function callDoubaoAPI() {
-  // 通过Netlify Function中转调用豆包API
-  const response = await fetch('/.netlify/functions/doubao', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tasks })
-  });
-  
-  const data = await response.json();
-  if (data.error) throw new Error(data.error);
-  return data.result || '';
-}
-
-function generateLocalRiskAnalysis() {
-  const total = tasks.length;
-  const done = tasks.filter(t => t.status === 'done').length;
-  const progress = tasks.filter(t => t.status === 'progress').length;
-  const todo = tasks.filter(t => t.status === 'todo').length;
-  
-  const highRiskOwners = ['研发部', '动画部'];
-  const riskTasks = tasks.filter(t => t.status === 'todo' && highRiskOwners.includes(t.owner));
-
-  return `📊 进度风险分析
-
-当前完成度：${Math.round(done/total*100)}% (${done}/${total})
-进行中：${progress}项 | 待办：${todo}项
-
-${riskTasks.length > 0 ? `⚠️ 需关注：${riskTasks.map(t => t.name).join('、')} 尚未启动，建议及时跟进。` : '✓ 当前无明显延期风险。'}
-
-建议优先关注研发部和动画部的素材交付进度。`;
 }
 
 // ========== 初始化 ==========
